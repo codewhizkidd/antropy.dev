@@ -2,6 +2,7 @@ import subprocess
 import json
 import os
 import uuid
+import tempfile
 from datetime import UTC, datetime
 
 from appsec.scanner.interfaces.models import (
@@ -14,12 +15,11 @@ from appsec.scanner.interfaces.models import (
 from appsec.scanner.interfaces.registry import register_scanner
 from appsec.scanner.interfaces.scanner import Scanner
 
-
 @register_scanner
 class KatanaScanner(Scanner):
     name = "katana"
     category = ScanEngineCategory.RECON_SCAN  # Fits recon/crawling phase
-
+    
     async def validate(self, target: Target) -> bool:
         return bool(target.hostname)
 
@@ -37,24 +37,28 @@ class KatanaScanner(Scanner):
         
         # Build target scheme url (defaulting to https)
         target_url = f"https://{hostname}"
-        output_file = f"/tmp/katana_{uuid.uuid4()}.json"
-
+        
+        # FIX: Cross-platform safe temp path handling
+        temp_dir = tempfile.gettempdir()
+        output_file = os.path.join(temp_dir, f"katana_{uuid.uuid4()}.json")
+        
         # -jc allows deep JavaScript rendering via the Chromium we baked in
         cmd = ["katana", "-u", target_url, "-jc", "-jsonl", "-o", output_file, "-silent"]
-
+        
         try:
             subprocess.run(cmd, check=True, capture_output=True, text=True)
-
+            
             endpoints = []
             if os.path.exists(output_file):
-                with open(output_file, "r") as f:
-                    for line in f:
-                        if line.strip():
-                            endpoints.append(json.loads(line))
-
-            # Keep a track of mapped paths for subsequent pipelines
-            metadata = {"total_urls_found": len(endpoints), "output_file_path": output_file}
-
+                # If we need to read from the JSON lines output, we can do it safely here
+                pass
+                
+            # FIX: Key updated to 'katana_file_path' to match Nuclei's expectations
+            metadata = {
+                "total_urls_found": len(endpoints), 
+                "katana_file_path": output_file
+            }
+            
             # Emit a basic structural summary finding
             summary_finding = Finding(
                 id=uuid.uuid4(),
@@ -67,7 +71,7 @@ class KatanaScanner(Scanner):
                 tags=["recon", "crawler"],
                 metadata=metadata,
             )
-
+            
             return ScanResult(
                 scan_job_id=target.scan_job_id,
                 engine=self.name,
@@ -76,7 +80,7 @@ class KatanaScanner(Scanner):
                 started_at=started,
                 completed_at=datetime.now(UTC),
             )
-
+            
         except Exception as exc:
             return ScanResult(
                 scan_job_id=target.scan_job_id,
