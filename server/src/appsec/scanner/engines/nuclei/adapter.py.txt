@@ -2,6 +2,7 @@ import subprocess
 import json
 import os
 import uuid
+import tempfile
 from datetime import UTC, datetime
 
 from appsec.scanner.interfaces.models import (
@@ -34,7 +35,10 @@ class NucleiScanner(Scanner):
     async def scan(self, target: Target) -> ScanResult:
         started = datetime.now(UTC)
         hostname = target.hostname
-        output_file = f"/tmp/nuclei_{uuid.uuid4()}.json"
+        
+        # FIX: Cross-platform safe temp directory mapping
+        temp_dir = tempfile.gettempdir()
+        output_file = os.path.join(temp_dir, f"nuclei_{uuid.uuid4()}.json")
 
         # Nuclei Command Base
         cmd = ["nuclei", "-jsonl", "-o", output_file, "-silent"]
